@@ -4,6 +4,10 @@ import openai
 import streamlit as st
 from dotenv import load_dotenv
 import chromadb
+import pysqlite3
+import sys
+sys.modules["sqlite3"] = pysqlite3
+
 
 # Charger les variables d'environnement depuis .env
 load_dotenv()
