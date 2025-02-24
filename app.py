@@ -81,13 +81,69 @@ def query_chatbot(user_message):
     answer = response['choices'][0]['message']['content'].strip()
     return answer
 
-st.title("Chatbot Intégré au Contenu du Site")
-user_input = st.text_input("Posez votre question:")
+# --- Interface Chat style ChatGPT ---
+st.set_page_config(page_title="Chatbot", layout="wide")
 
-if st.button("Envoyer"):
-    if user_input:
-        with st.spinner("Chargement de la réponse..."):
-            answer = query_chatbot(user_input)
-            st.markdown(f"**Réponse :** {answer}")
-    else:
-        st.warning("Veuillez entrer une question.")
+# Injections CSS pour le style de chat
+st.markdown(
+    """
+    <style>
+    .chat-container {
+        max-width: 800px;
+        margin: auto;
+        padding: 10px;
+    }
+    .message {
+        padding: 8px 15px;
+        margin: 5px 0;
+        border-radius: 15px;
+        max-width: 70%;
+        line-height: 1.5;
+        font-size: 16px;
+    }
+    .user {
+        background-color: #DCF8C6;
+        margin-left: auto;
+        text-align: right;
+    }
+    .bot {
+        background-color: #E1E1E1;
+        margin-right: auto;
+        text-align: left;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+st.title("Chatbot Intégré au Contenu du Site")
+
+# Initialiser l'historique des messages dans le state
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+def add_message(role, content):
+    st.session_state.messages.append({"role": role, "content": content})
+
+# Zone de chat
+chat_container = st.container()
+with chat_container:
+    st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+    for msg in st.session_state.messages:
+        role_class = "user" if msg["role"] == "user" else "bot"
+        st.markdown(f'<div class="message {role_class}"><strong>{msg["role"].capitalize()} :</strong> {msg["content"]}</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Formulaire d'envoi
+with st.form(key="chat_form", clear_on_submit=True):
+    user_input = st.text_input("Votre message :", "")
+    submit_button = st.form_submit_button(label="Envoyer")
+
+if submit_button and user_input:
+    # Ajouter le message de l'utilisateur à l'historique
+    add_message("user", user_input)
+    with st.spinner("Chargement de la réponse..."):
+        answer = query_chatbot(user_input)
+    add_message("bot", answer)
+    # Rafraîchir la page pour afficher le nouveau message
+    st.experimental_rerun()
