@@ -1,4 +1,0 @@
-sqlite
-chromadb
-openai==0.28.0
-python-dotenv
