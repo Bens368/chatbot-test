@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Chatbot</title>
+  <style>
+    /* Style général de l'interface */
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      background-color: #f2f2f2;
+      margin: 0;
+      padding: 0;
+    }
+    #chat-container {
+      max-width: 600px;
+      margin: 50px auto;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      height: 80vh;
+      overflow: hidden;
+    }
+    /* En-tête */
+    #chat-header {
+      background-color: #343541;
+      color: #fff;
+      padding: 20px;
+      text-align: center;
+      font-size: 1.2em;
+    }
+    /* Zone d'affichage des messages */
+    #chat-content {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      background-color: #f7f7f8;
+    }
+    .message {
+      margin-bottom: 15px;
+      line-height: 1.4;
+    }
+    .user-message {
+      text-align: right;
+    }
+    .user-message span {
+      background-color: #DCF8C6;
+      padding: 10px 15px;
+      border-radius: 15px;
+      display: inline-block;
+      max-width: 80%;
+    }
+    .bot-message span {
+      background-color: #e1e1e1;
+      padding: 10px 15px;
+      border-radius: 15px;
+      display: inline-block;
+      max-width: 80%;
+    }
+    /* Zone d'envoi du message */
+    #chat-input-area {
+      display: flex;
+      border-top: 1px solid #ddd;
+    }
+    #chat-input {
+      flex: 1;
+      padding: 15px;
+      border: none;
+      outline: none;
+      font-size: 1em;
+    }
+    #chat-send {
+      padding: 15px 20px;
+      background-color: #343541;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      font-size: 1em;
+    }
+    #chat-send:hover {
+      background-color: #4a4e69;
+    }
+  </style>
+</head>
+<body>
+  <div id="chat-container">
+    <div id="chat-header">Chatbot</div>
+    <div id="chat-content">
+      <!-- Les messages seront ajoutés ici -->
+    </div>
+    <div id="chat-input-area">
+      <input type="text" id="chat-input" placeholder="Tapez votre message...">
+      <button id="chat-send">Envoyer</button>
+    </div>
+  </div>
+
+  <script>
+    // Fonction pour ajouter les messages dans le chat
+    function appendMessage(sender, text) {
+      const chatContent = document.getElementById('chat-content');
+      const messageDiv = document.createElement('div');
+      messageDiv.classList.add('message');
+      if(sender === "user"){
+        messageDiv.classList.add('user-message');
+        messageDiv.innerHTML = `<span><strong>Vous :</strong> ${text}</span>`;
+      } else {
+        messageDiv.classList.add('bot-message');
+        messageDiv.innerHTML = `<span><strong>Bot :</strong> ${text}</span>`;
+      }
+      chatContent.appendChild(messageDiv);
+      // Scroll automatique en bas
+      chatContent.scrollTop = chatContent.scrollHeight;
+    }
+
+    // Fonction pour gérer l'envoi du message
+    document.getElementById('chat-send').addEventListener('click', function(){
+      const inputField = document.getElementById('chat-input');
+      const message = inputField.value.trim();
+      if(message === "") return;
+      // Afficher le message de l'utilisateur
+      appendMessage("user", message);
+      inputField.value = "";
+      
+      // Appel à l'API Flask déployée (modifiez l'URL ci-dessous)
+      fetch("http://127.0.0.1:5000/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ message: message })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if(data.response){
+          appendMessage("bot", data.response);
+        } else {
+          appendMessage("bot", "Erreur: " + data.error);
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        appendMessage("bot", "Erreur lors de la communication avec le serveur.");
+      });
+    });
+
+    // Envoi du message avec la touche "Entrée"
+    document.getElementById('chat-input').addEventListener('keypress', function(e){
+      if(e.key === "Enter"){
+        document.getElementById('chat-send').click();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+name: chatbot_env
+channels:
+  - defaults
+dependencies:
+  - python=3.9
+  - flask
+  - pip
+  - pip:
+      - openai
+      - flask-limiter
+      - python-dotenv
+      - pydantic
+      - gunicorn
