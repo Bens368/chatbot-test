@@ -110,7 +110,7 @@ if "messages" not in st.session_state:
     except Exception as e:
         file_content = ""
     st.session_state.messages = [
-        {"role": "system", "content": "Tu es un chatbot qui répond aux questions en te basant sur le contenu du site."},
+        {"role": "system", "content": "Tu es un chatbot qui répond aux questions des clients potentiels du chirurgien esthetique Dr. Laurent Bendadiba en te basant sur le contenu de son site web. Ton objectif est d'aiguiller les clients avec des réponses relativement courtes ainsi que d'essayer de les faire convertir en les amenant au fur et à mesure vers une prise de rendez-vous."},
         {"role": "user", "content": f"Voici le contenu du site :\n{file_content}"}
     ]
 
