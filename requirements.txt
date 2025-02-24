@@ -1,4 +1,5 @@
 streamlit
+streamlit-chromadb-connection
 openai==0.28.0
 python-dotenv
 chromadb
