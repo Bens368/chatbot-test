@@ -1,33 +1,21 @@
 import os
-import openai
-from flask import Flask, request, jsonify
-from dotenv import load_dotenv
-from flask_cors import CORS
 import re
+import openai
+import streamlit as st
+from dotenv import load_dotenv
+import chromadb
 
-# Charger les variables d'environnement
+# Charger les variables d'environnement depuis .env
 load_dotenv()
-
-app = Flask(__name__)
-CORS(app)  # Autorise les requêtes cross-origin
-
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# --- Configuration et initialisation de ChromaDB ---
-from chromadb.config import Settings
-import chromadb
-
-import chromadb
-
-# Remplacer l'initialisation actuelle du client Chroma par :
-client = chromadb.PersistentClient(path="./chroma_db")
+# Initialisation du client Chroma avec le répertoire de persistance
+client = chromadb.Client(persist_directory="./chroma_db")
 collection = client.get_or_create_collection("site_content")
-
 
 def split_text(text, max_length=500):
     """
-    Découpe le texte en passages d'environ max_length caractères.
-    On utilise ici une découpe basée sur les phrases pour conserver la cohérence.
+    Découpe le texte en chunks d'environ max_length caractères en gardant la cohérence des phrases.
     """
     sentences = re.split(r'(?<=[.!?])\s+', text)
     chunks = []
@@ -44,16 +32,16 @@ def split_text(text, max_length=500):
 
 def build_vector_db():
     """
-    Lit le fichier site_content.txt, le découpe en passages, génère les embeddings pour chacun
-    et les insère dans ChromaDB.
+    Lit le fichier site_content.txt, découpe le contenu en passages,
+    génère les embeddings pour chaque passage et les insère dans ChromaDB.
     """
     try:
         with open("site_content.txt", "r", encoding="utf-8") as f:
             content = f.read()
     except Exception as e:
-        print(f"Erreur lors de la lecture du fichier : {e}")
+        st.error(f"Erreur lors de la lecture du fichier : {e}")
         return
-    
+
     chunks = split_text(content)
     ids = [f"chunk_{i}" for i in range(len(chunks))]
     embeddings = []
@@ -63,54 +51,55 @@ def build_vector_db():
             embedding = embed_response["data"][0]["embedding"]
             embeddings.append(embedding)
         except Exception as e:
-            print(f"Erreur lors de la génération de l'embedding : {e}")
-            embeddings.append([0]*768)  # Valeur par défaut en cas d'erreur (à adapter)
-    # Ajoute les passages à la collection
+            st.error(f"Erreur lors de la génération de l'embedding pour un chunk : {e}")
+            embeddings.append([0] * 768)  # Valeur par défaut en cas d'erreur
     collection.add(
         ids=ids,
         documents=chunks,
         embeddings=embeddings
     )
-    print("Base vectorielle construite avec succès.")
+    st.success("La base vectorielle a été construite avec succès.")
 
-# Construire la base vectorielle si elle est vide
+# Si la collection est vide, on construit la base vectorielle
 if len(collection.get()["ids"]) == 0:
+    st.info("Construction de la base vectorielle...")
     build_vector_db()
 
-# --- API Flask ---
-@app.route('/chat', methods=['POST'])
-def chat():
-    data = request.get_json()
-    if not data or 'message' not in data:
-        return jsonify({'error': 'Message manquant'}), 400
-
-    user_message = data['message']
+def query_chatbot(user_message):
+    """
+    Génère l'embedding de la requête utilisateur, interroge ChromaDB pour récupérer
+    les passages pertinents, puis envoie le prompt à ChatGPT.
+    """
+    # Générer l'embedding pour la requête
+    query_embed_response = openai.Embedding.create(input=user_message, model="text-embedding-ada-002")
+    query_embedding = query_embed_response["data"][0]["embedding"]
     
-    try:
-        # Générer l'embedding de la requête utilisateur
-        query_embed_response = openai.Embedding.create(input=user_message, model="text-embedding-ada-002")
-        query_embedding = query_embed_response["data"][0]["embedding"]
-        
-        # Interroger ChromaDB pour récupérer les passages les plus pertinents
-        query_result = collection.query(query_embeddings=[query_embedding], n_results=3)
-        # Concaténer les passages trouvés pour constituer le contexte
-        relevant_texts = " ".join(query_result["documents"][0])
-        
-        # Construire le prompt en fournissant le contexte (passages pertinents) en message système
-        messages = [
-            {"role": "system", "content": f"Les informations suivantes proviennent d'un site web :\n{relevant_texts}"},
-            {"role": "user", "content": user_message}
-        ]
-        
-        # Appeler l'API ChatCompletion de ChatGPT
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages
-        )
-        answer = response['choices'][0]['message']['content'].strip()
-        return jsonify({'response': answer})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    # Recherche dans ChromaDB (les 3 passages les plus pertinents)
+    query_result = collection.query(query_embeddings=[query_embedding], n_results=3)
+    relevant_texts = " ".join(query_result["documents"][0])
+    
+    # Construction du prompt en fournissant le contexte en message système
+    messages = [
+        {"role": "system", "content": f"Les informations suivantes proviennent d'un site web :\n{relevant_texts}"},
+        {"role": "user", "content": user_message}
+    ]
+    
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=messages
+    )
+    answer = response['choices'][0]['message']['content'].strip()
+    return answer
 
-if __name__ == '__main__':
-    app.run(debug=True)
+# --- Interface Streamlit ---
+st.title("Chatbot Intégré au Contenu du Site")
+
+user_input = st.text_input("Posez votre question:")
+
+if st.button("Envoyer"):
+    if user_input:
+        with st.spinner("Chargement de la réponse..."):
+            answer = query_chatbot(user_input)
+            st.markdown(f"**Réponse :** {answer}")
+    else:
+        st.warning("Veuillez entrer une question.")
