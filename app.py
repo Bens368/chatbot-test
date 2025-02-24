@@ -75,4 +75,63 @@ def query_chatbot(user_message):
     query_embedding = query_embed_response["data"][0]["embedding"]
     
     # Récupérer les 3 passages les plus pertinents
-    query_result = collection.query(query_embeddings=[query_embedding],
+    query_result = collection.query(query_embeddings=[query_embedding], n_results=3)
+    relevant_texts = " ".join(query_result["documents"][0])
+    
+    # Construire le prompt avec le contexte
+    messages = [
+        {"role": "system", "content": f"Les informations suivantes proviennent d'un site web :\n{relevant_texts}"},
+        {"role": "user", "content": user_message}
+    ]
+    
+    # Appeler ChatGPT en mode streaming
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=messages,
+        stream=True,
+    )
+    full_response = ""
+    for chunk in response:
+        content = chunk.choices[0].delta.get("content", "")
+        full_response += content
+    return full_response
+
+# Configuration de la page
+st.set_page_config(page_title="Chatbot Intégré", layout="wide")
+st.title("Chatbot Intégré au Contenu du Site")
+st.write("Posez vos questions ci-dessous:")
+
+# Initialiser l'historique des messages si nécessaire
+if "messages" not in st.session_state:
+    # Charger le contenu des instructions (si disponible)
+    try:
+        with open("instructions.txt", "r", encoding="utf-8") as file:
+            file_content = file.read()
+    except Exception as e:
+        file_content = ""
+    st.session_state.messages = [
+        {"role": "system", "content": "Tu es un chatbot qui répond aux questions en te basant sur le contenu du site."},
+        {"role": "user", "content": f"Voici le contenu du site :\n{file_content}"}
+    ]
+
+# Afficher les messages existants dans l'historique (à partir du 3e message)
+for message in st.session_state.messages[2:]:
+    st.chat_message(message["role"]).markdown(message["content"])
+
+# Saisie utilisateur
+if prompt := st.chat_input("Votre texte ici :"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.chat_message("user").markdown(prompt)
+    
+    # Traitement de la réponse de l'assistant
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        full_response = ""
+        try:
+            answer = query_chatbot(prompt)
+            full_response = answer
+            message_placeholder.markdown(full_response)
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
+    
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
