@@ -10,7 +10,7 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Initialisation du client Chroma avec le répertoire de persistance
-client = chromadb.Client(persist_directory="./chroma_db")
+client = chromadb.PersistentClient(path="./chroma_db")
 collection = client.get_or_create_collection("site_content")
 
 def split_text(text, max_length=500):
