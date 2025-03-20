@@ -1,3 +1,4 @@
+# Forcer l'utilisation de pysqlite3 à la place de sqlite3
 import pysqlite3
 import sys
 sys.modules["sqlite3"] = pysqlite3
@@ -8,16 +9,10 @@ import openai
 import streamlit as st
 from dotenv import load_dotenv
 import chromadb
-import tempfile
-import requests
-
-# Positionnez st.set_page_config avant toute autre instruction Streamlit
-st.set_page_config(page_title="Chatbot Intégré", layout="wide")
 
 # Charger les variables d'environnement depuis .env
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
-
 
 # Initialisation du client Chroma avec le répertoire de persistance
 client = chromadb.PersistentClient(path="./chroma_db")
@@ -39,28 +34,15 @@ def split_text(text, max_length=500):
     return chunks
 
 def build_vector_db():
-    """
-    Lit les fichiers site_content.txt et document_centralise.txt, 
-    découpe le contenu, génère les embeddings et les indexe dans ChromaDB.
-    """
+    """Lit le fichier site_content.txt, découpe le contenu, génère les embeddings et les indexe dans ChromaDB."""
     try:
         with open("site_content.txt", "r", encoding="utf-8") as f:
-            content1 = f.read()
+            content = f.read()
     except Exception as e:
-        st.error(f"Erreur lors de la lecture du fichier site_content.txt : {e}")
-        content1 = ""
-    try:
-        with open("document_centralise.txt", "r", encoding="utf-8") as f:
-            content2 = f.read()
-    except Exception as e:
-        st.error(f"Erreur lors de la lecture du fichier document_centralise.txt : {e}")
-        content2 = ""
-    if not content1 and not content2:
-        st.error("Aucun contenu disponible pour construire la base vectorielle.")
+        st.error(f"Erreur lors de la lecture du fichier : {e}")
         return
 
-    combined_content = content1 + "\n" + content2
-    chunks = split_text(combined_content)
+    chunks = split_text(content)
     ids = [f"chunk_{i}" for i in range(len(chunks))]
     embeddings = []
     for chunk in chunks:
@@ -78,7 +60,7 @@ def build_vector_db():
     )
     st.success("La base vectorielle a été construite avec succès.")
 
-# Construire la base vectorielle si elle est vide
+# Construire la base vectorielle si elle n'existe pas déjà
 if len(collection.get()["ids"]) == 0:
     st.info("Construction de la base vectorielle...")
     build_vector_db()
@@ -96,9 +78,9 @@ def query_chatbot(user_message):
     query_result = collection.query(query_embeddings=[query_embedding], n_results=3)
     relevant_texts = " ".join(query_result["documents"][0])
     
-    # Construction du prompt en fournissant le contexte
+    # Construire le prompt avec le contexte
     messages = [
-        {"role": "system", "content": f"Les informations suivantes proviennent du site et du document centralisé :\n{relevant_texts}"},
+        {"role": "system", "content": f"Les informations suivantes proviennent d'un site web :\n{relevant_texts}"},
         {"role": "user", "content": user_message}
     ]
     
@@ -114,95 +96,42 @@ def query_chatbot(user_message):
         full_response += content
     return full_response
 
-# Configuration de la page Streamlit
+# Configuration de la page
+st.set_page_config(page_title="Chatbot Intégré", layout="wide")
 st.title("Chatbot Intégré au Contenu du Site")
 st.write("Posez vos questions ci-dessous:")
 
-# Choix du mode de chat : Texte ou Vocal
-mode = st.radio("Choisissez le mode de chat :", options=["Texte", "Vocal"])
-
 # Initialiser l'historique des messages si nécessaire
 if "messages" not in st.session_state:
+    # Charger le contenu des instructions (si disponible)
     try:
         with open("instructions.txt", "r", encoding="utf-8") as file:
             file_content = file.read()
     except Exception as e:
         file_content = ""
     st.session_state.messages = [
-        {"role": "system", "content": "Tu es un chatbot qui répond aux questions des clients potentiels du chirurgien esthétique Dr. Laurent Bendadiba en te basant sur le contenu de son site web ainsi que le fichier document_centralise qui rassemble du contenu officiel sur la chirurgie éstethique. Ton objectif est d'aiguiller les clients avec des réponses relativement courtes, ainsi que d'essayer de les faire convertir en les amenant au fur et à mesure vers une prise de rendez-vous. N'insiste pas trop sur la prise de rendez-vous, mais encourage le client si tu sens qu'il est intéressé. Fais comme si tu étais intégré au site web, donc ne propose pas d'aller sur le site web puisque le client y est déjà. Si l'utilisateur parle d'un autre sujet que la chirurgie ou la médecine, ramène-l'au sujet principal."},
-        {"role": "user", "content": f"Voici le contenu du site et du document centralisé :\n{file_content}"}
+        {"role": "system", "content": "Tu es un chatbot qui répond aux questions des clients potentiels du chirurgien esthétique Dr. Laurent Bendadiba en te basant sur le contenu de son site web. Ton objectif est d'aiguiller les clients avec des réponses relativement courtes, ainsi que d'essayer de les faire convertir en les amenant au fur et à mesure vers une prise de rendez-vous. N'insiste pas trop sur la prise de rendez-vous, mais encourage le client si tu sens qu'il est intéressé. Fais comme si tu étais intégré au site web, donc ne propose pas d'aller sur le site web puisque le client y est déjà. Si l'utilisateur parle d'un autre sujet que la chirurgie ou la médecine, ramène-l'au sujet principal."},
+        {"role": "user", "content": f"Voici le contenu du site :\n{file_content}"}
     ]
 
-if mode == "Texte":
-    # Affichage de l'historique des messages (à partir du 3e message)
-    for message in st.session_state.messages[2:]:
-        st.chat_message(message["role"]).markdown(message["content"])
-    
-    if prompt := st.chat_input("Votre texte ici :"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        st.chat_message("user").markdown(prompt)
-        
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            full_response = ""
-            try:
-                answer = query_chatbot(prompt)
-                full_response = answer
-                message_placeholder.markdown(full_response)
-            except Exception as e:
-                st.error(f"Une erreur est survenue : {e}")
-        
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+# Afficher les messages existants dans l'historique (à partir du 3e message)
+for message in st.session_state.messages[2:]:
+    st.chat_message(message["role"]).markdown(message["content"])
 
-elif mode == "Vocal":
-    uploaded_audio = st.file_uploader("Enregistrez ou téléversez un fichier audio", type=["wav", "mp3", "m4a", "ogg"])
-    if uploaded_audio is not None:
-        st.audio(uploaded_audio, format="audio/mp3")
-        # Sauvegarde temporaire du fichier audio
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
-            temp_audio.write(uploaded_audio.getvalue())
-            temp_audio_path = temp_audio.name
+# Saisie utilisateur
+if prompt := st.chat_input("Votre texte ici :"):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.chat_message("user").markdown(prompt)
+    
+    # Traitement de la réponse de l'assistant
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        full_response = ""
         try:
-            with open(temp_audio_path, "rb") as audio_file:
-                transcription = openai.Audio.transcribe("whisper-1", audio_file)
-            user_message = transcription['text']
-            st.write(f"**Transcription :** {user_message}")
+            answer = query_chatbot(prompt)
+            full_response = answer
+            message_placeholder.markdown(full_response)
         except Exception as e:
-            st.error(f"Erreur lors de la transcription de l'audio : {e}")
-            user_message = ""
-        
-        if user_message:
-            try:
-                answer = query_chatbot(user_message)
-                st.write("**Réponse :**")
-                st.write(answer)
-            except Exception as e:
-                st.error(f"Erreur lors de la génération de la réponse : {e}")
-            
-            # Si la clé API ElevenLabs est configurée, générer et diffuser la réponse audio
-            elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-            if elevenlabs_api_key:
-                voice_id = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
-                headers = {
-                    "xi-api-key": elevenlabs_api_key,
-                    "Content-Type": "application/json",
-                }
-                data = {
-                    "text": f"<lang=fr>{answer}</lang>",
-                    "model_id": "eleven_multilingual_v2",
-                    "voice_settings": {"stability": 0.75, "similarity_boost": 0.75}
-                }
-                try:
-                    audio_response = requests.post(
-                        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-                        headers=headers,
-                        json=data
-                    )
-                    if audio_response.status_code == 200:
-                        st.audio(audio_response.content, format="audio/mp3")
-                    else:
-                        st.error(f"Erreur ElevenLabs : {audio_response.status_code}")
-                except Exception as e:
-                    st.error(f"Erreur lors de la génération de la réponse audio : {e}")
-            else:
-                st.info("Clé API ElevenLabs non configurée, réponse textuelle uniquement.")
+            st.error(f"An error occurred: {e}")
+    
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
