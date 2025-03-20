@@ -1,4 +1,3 @@
-# Forcer l'utilisation de pysqlite3 à la place de sqlite3
 import pysqlite3
 import sys
 sys.modules["sqlite3"] = pysqlite3
@@ -12,9 +11,13 @@ import chromadb
 import tempfile
 import requests
 
+# Positionnez st.set_page_config avant toute autre instruction Streamlit
+st.set_page_config(page_title="Chatbot Intégré", layout="wide")
+
 # Charger les variables d'environnement depuis .env
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
+
 
 # Initialisation du client Chroma avec le répertoire de persistance
 client = chromadb.PersistentClient(path="./chroma_db")
@@ -112,7 +115,6 @@ def query_chatbot(user_message):
     return full_response
 
 # Configuration de la page Streamlit
-st.set_page_config(page_title="Chatbot Intégré", layout="wide")
 st.title("Chatbot Intégré au Contenu du Site")
 st.write("Posez vos questions ci-dessous:")
 
